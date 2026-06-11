@@ -1,0 +1,437 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { ShoppingCart, Heart, Music, Play, X, Info, Star } from 'lucide-react';
+
+// --- DADOS DAS NOTAS ---
+const NOTES_DATA = [
+  { id: 1, name: 'Dó Central', clef: 'sol', y: 120, ledger: true, color: 'text-red-500', bg: 'bg-red-100', freq: 261.63, description: 'O Dó central é o rei do meio! Ele precisa de uma linha extra só para ele como se fosse um banquinho.' },
+  { id: 2, name: 'Ré', clef: 'sol', y: 110, ledger: false, color: 'text-orange-500', bg: 'bg-orange-100', freq: 293.66, description: 'O Ré fica logo abaixo da primeira linha da pauta, pendurado como uma gota de chuva.' },
+  { id: 3, name: 'Mi', clef: 'sol', y: 100, ledger: false, color: 'text-amber-500', bg: 'bg-amber-100', freq: 329.63, description: 'O Mi adora se equilibrar! Ele fica bem no meio da primeira linha da pauta.' },
+  { id: 4, name: 'Fá', clef: 'sol', y: 90, ledger: false, color: 'text-green-500', bg: 'bg-green-100', freq: 349.23, description: 'O Fá descansa confortavelmente no primeiro espaço da clave de Sol.' },
+  { id: 5, name: 'Sol', clef: 'sol', y: 80, ledger: false, color: 'text-blue-500', bg: 'bg-blue-100', freq: 392.00, description: 'A própria Clave de Sol começa a ser desenhada na linha onde o Sol mora (a segunda linha)!' },
+  { id: 6, name: 'Lá', clef: 'sol', y: 70, ledger: false, color: 'text-indigo-500', bg: 'bg-indigo-100', freq: 440.00, description: 'O Lá adora pular e fica brincando no segundo espaço.' },
+  { id: 7, name: 'Si', clef: 'sol', y: 60, ledger: false, color: 'text-purple-500', bg: 'bg-purple-100', freq: 493.88, description: 'O Si mora bem no meio da pauta, cortado pela terceira linha.' },
+  { id: 8, name: 'Dó Agudo', clef: 'sol', y: 50, ledger: false, color: 'text-pink-500', bg: 'bg-pink-100', freq: 523.25, description: 'Este é o Dó irmão mais novo! Ele tem um som bem fininho e agudo no terceiro espaço.' },
+  { id: 9, name: 'Dó (Grave)', clef: 'fa', y: 70, ledger: false, color: 'text-teal-500', bg: 'bg-teal-100', freq: 130.81, description: 'Na clave de Fá, as notas têm som de urso gigante! O Dó fica no segundo espaço.' },
+  { id: 10, name: 'Fá', clef: 'fa', y: 40, ledger: false, color: 'text-cyan-600', bg: 'bg-cyan-100', freq: 174.61, description: 'A Clave de Fá aponta exatamente para a quarta linha, onde a nota Fá está escondida!' },
+  { id: 11, name: 'Sol (Grave)', clef: 'fa', y: 30, ledger: false, color: 'text-emerald-500', bg: 'bg-emerald-100', freq: 196.00, description: 'O Sol na clave de Fá fica lá no alto da pauta, no quarto espaço.' }
+];
+
+// --- MOTOR DE ÁUDIO ---
+const playTone = (frequency) => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    
+    const audioCtx = new AudioContext();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    // Fade in / Fade out suave para crianças
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.1);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + 1.5);
+  } catch (e) {
+    console.log("Audio not supported or interaction needed first.");
+  }
+};
+
+// --- COMPONENTE: PENTAGRAMA (SVG) ---
+const Staff = ({ clef, noteY, ledger, noteColor, animated = true }) => {
+  return (
+    <svg width="100%" height="100%" viewBox="0 0 200 150" className="drop-shadow-md">
+      {/* 5 Linhas do Pentagrama */}
+      {[20, 40, 60, 80, 100].map((y) => (
+        <line key={y} x1="10" y1={y} x2="190" y2={y} stroke="#334155" strokeWidth="2" strokeLinecap="round" />
+      ))}
+      
+      {/* Linha suplementar (Ledger Line) */}
+      {ledger && (
+        <line x1="80" y1={120} x2="140" y2={120} stroke="#334155" strokeWidth="3" strokeLinecap="round" />
+      )}
+
+      {/* Símbolo da Clave */}
+      <text x="30" y={clef === 'sol' ? 85 : 70} fontSize={clef === 'sol' ? "80" : "75"} fontFamily="serif" fill="#1e293b" textAnchor="middle" className="select-none">
+        {clef === 'sol' ? '𝄞' : '𝄢'}
+      </text>
+
+      {/* A Nota Musical */}
+      <g className={animated ? "float-anim" : ""} style={{ transformOrigin: `110px ${noteY}px` }}>
+        <ellipse 
+          cx="110" cy={noteY} rx="16" ry="12" 
+          transform={`rotate(-15 110 ${noteY})`} 
+          fill="currentColor" 
+          className={noteColor} 
+        />
+        {/* Olhinhos fofos na nota */}
+        <circle cx="105" cy={noteY - 2} r="2.5" fill="white" />
+        <circle cx="115" cy={noteY - 2} r="2.5" fill="white" />
+        <circle cx="105" cy={noteY - 2} r="1" fill="black" />
+        <circle cx="115" cy={noteY - 2} r="1" fill="black" />
+        <path d={`M 106 ${noteY + 4} Q 110 ${noteY + 8} 114 ${noteY + 4}`} stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      </g>
+    </svg>
+  );
+};
+
+export default function App() {
+  const [filter, setFilter] = useState('all');
+  const [cart, setCart] = useState([]);
+  const [favorites, setFavorites] = useState([]);
+  const [cartAnimating, setCartAnimating] = useState(false);
+  const [selectedNote, setSelectedNote] = useState(null);
+  const [showCart, setShowCart] = useState(false);
+
+  // Filtragem
+  const filteredNotes = NOTES_DATA.filter(note => filter === 'all' || note.clef === filter);
+
+  // Favoritar
+  const toggleFavorite = (id, e) => {
+    e.stopPropagation();
+    if (favorites.includes(id)) {
+      setFavorites(favorites.filter(favId => favId !== id));
+    } else {
+      setFavorites([...favorites, id]);
+      // Ativa animação no próprio botão usando estado local nele
+    }
+  };
+
+  // Adicionar à Mochila (Carrinho)
+  const addToCart = (note, e) => {
+    e.stopPropagation();
+    if (!cart.find(item => item.id === note.id)) {
+      setCart([...cart, note]);
+      playTone(note.freq);
+      
+      // Animar ícone da mochila
+      setCartAnimating(true);
+      setTimeout(() => setCartAnimating(false), 400);
+    }
+  };
+
+  // Remover da Mochila
+  const removeFromCart = (id) => {
+    setCart(cart.filter(item => item.id !== id));
+  };
+
+  // Estilos Injetados para Animações e 3D
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      .perspective-1000 { perspective: 1000px; }
+      .preserve-3d { transform-style: preserve-3d; }
+      .card-3d-wrapper {
+        transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      @media (hover: hover) and (pointer: fine) {
+        .card-3d-wrapper:hover {
+          transform: rotateX(8deg) rotateY(-8deg) scale(1.05);
+          z-index: 10;
+        }
+      }
+      @keyframes heartPop {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.8) rotate(-15deg); color: #ef4444; }
+        100% { transform: scale(1); }
+      }
+      .heart-anim {
+        animation: heartPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      @keyframes cartWiggle {
+        0%, 100% { transform: rotate(0) scale(1); }
+        25% { transform: rotate(-15deg) scale(1.2); }
+        75% { transform: rotate(15deg) scale(1.2); }
+      }
+      .cart-anim {
+        animation: cartWiggle 0.4s ease-in-out;
+      }
+      @keyframes floating {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-6px); }
+      }
+      .float-anim {
+        animation: floating 2.5s ease-in-out infinite;
+      }
+      .modal-enter {
+        animation: modalScale 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      }
+      @keyframes modalScale {
+        from { transform: scale(0.8); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans selection:bg-purple-200">
+      
+      {/* --- HEADER --- */}
+      <header className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md shadow-sm border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 h-16 sm:h-20 flex items-center justify-between">
+          
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-500 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-purple-200 rotate-3 float-anim">
+              <Music className="w-6 h-6 sm:w-7 sm:h-7" />
+            </div>
+            <div>
+              <h1 className="text-lg sm:text-2xl font-bold text-slate-800 tracking-tight">Notas Divertidas</h1>
+              <p className="text-xs sm:text-sm font-medium text-purple-600 hidden sm:block">Aprenda música brincando!</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 sm:gap-6">
+            {/* Contador de Favoritos */}
+            <div className="flex items-center gap-1.5 sm:gap-2 text-rose-500 font-bold bg-rose-50 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full border border-rose-100 text-sm sm:text-base">
+              <Heart fill="currentColor" className="float-anim w-4 h-4 sm:w-5 sm:h-5" />
+              <span>{favorites.length}</span>
+            </div>
+
+            {/* Mochila (Carrinho) */}
+            <button 
+              onClick={() => setShowCart(true)}
+              className={`relative flex items-center gap-2 bg-indigo-500 text-white px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-bold shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-600 hover:-translate-y-1 text-sm sm:text-base ${cartAnimating ? 'cart-anim bg-indigo-400' : ''}`}
+            >
+              <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Mochila</span>
+              {cart.length > 0 && (
+                <span className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-yellow-400 text-slate-900 w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs sm:text-sm border-2 border-white">
+                  {cart.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* --- MAIN CONTENT --- */}
+      <main className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+        
+        {/* Filtros Interativos */}
+        <section className="mb-8 sm:mb-10 flex flex-col items-center">
+          <h2 className="text-lg sm:text-xl font-bold text-slate-700 mb-4 sm:mb-6 flex items-center gap-2 text-center">
+            <Star className="text-yellow-400 w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" />
+            O que vamos explorar hoje?
+            <Star className="text-yellow-400 w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" />
+          </h2>
+          <div className="flex flex-wrap justify-center gap-2 sm:gap-4 bg-white p-1.5 sm:p-2 rounded-3xl sm:rounded-full shadow-sm border border-slate-200">
+            {[
+              { id: 'all', label: 'Todas', icon: '🎵' },
+              { id: 'sol', label: 'Clave de Sol', icon: '𝄞' },
+              { id: 'fa', label: 'Clave de Fá', icon: '𝄢' },
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={`flex items-center gap-1.5 sm:gap-2 px-4 py-2 sm:px-6 sm:py-3 rounded-full font-bold text-sm sm:text-lg transition-all duration-300 ${
+                  filter === f.id 
+                  ? 'bg-purple-500 text-white shadow-md shadow-purple-200 scale-105' 
+                  : 'bg-transparent text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                <span className="text-xl sm:text-2xl leading-none font-serif">{f.icon}</span>
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Grid de Cards 3D */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 perspective-1000">
+          {filteredNotes.map((note) => {
+            const isFav = favorites.includes(note.id);
+            const inCart = cart.some(item => item.id === note.id);
+
+            return (
+              <div key={note.id} className="relative group perspective-1000">
+                <div 
+                  className={`card-3d-wrapper preserve-3d w-full h-full bg-white rounded-3xl p-5 cursor-pointer border-2 border-slate-100 shadow-xl shadow-slate-200/50 flex flex-col relative overflow-hidden`}
+                  onClick={() => { setSelectedNote(note); playTone(note.freq); }}
+                >
+                  {/* Etiqueta da Clave */}
+                  <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-bold ${note.clef === 'sol' ? 'bg-orange-100 text-orange-600' : 'bg-teal-100 text-teal-600'}`}>
+                    {note.clef === 'sol' ? 'Clave de Sol' : 'Clave de Fá'}
+                  </div>
+
+                  {/* Botão de Favorito com Animação Local */}
+                  <button 
+                    onClick={(e) => toggleFavorite(note.id, e)}
+                    className={`absolute top-4 right-4 z-20 p-2 rounded-full bg-white/80 backdrop-blur shadow-sm transition-colors ${isFav ? 'text-rose-500' : 'text-slate-300 hover:text-rose-300'}`}
+                  >
+                    <Heart 
+                      size={24} 
+                      fill={isFav ? "currentColor" : "none"} 
+                      className={isFav ? "heart-anim" : ""}
+                      key={isFav ? 'fav' : 'unfav'} // Força re-render da animação
+                    />
+                  </button>
+
+                  {/* Área do Pentagrama */}
+                  <div className={`mt-10 mb-4 h-32 rounded-2xl ${note.bg} border-4 border-white shadow-inner flex items-center justify-center overflow-hidden`}>
+                     <Staff clef={note.clef} noteY={note.y} ledger={note.ledger} noteColor={note.color} />
+                  </div>
+
+                  {/* Informações da Nota */}
+                  <div className="text-center mt-auto">
+                    <h3 className={`text-2xl font-black ${note.color} mb-1`}>{note.name}</h3>
+                    <p className="text-slate-400 text-sm font-medium mb-4">Clique para ouvir!</p>
+                    
+                    <button 
+                      onClick={(e) => addToCart(note, e)}
+                      disabled={inCart}
+                      className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                        inCart 
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-indigo-500 text-white hover:bg-indigo-600 hover:shadow-lg hover:shadow-indigo-200 active:scale-95'
+                      }`}
+                    >
+                      {inCart ? 'Na Mochila!' : 'Pegar Nota'}
+                      {!inCart && <ShoppingCart size={18} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </main>
+
+      {/* --- MODAL DE DETALHES --- */}
+      {selectedNote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setSelectedNote(null)}>
+          <div 
+            className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl relative overflow-hidden modal-enter flex flex-col max-h-[90vh]"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header Modal */}
+            <div className={`h-32 sm:h-48 w-full ${selectedNote.bg} p-4 sm:p-6 relative flex flex-col items-center justify-center shrink-0`}>
+              <button 
+                onClick={() => setSelectedNote(null)}
+                className="absolute top-3 right-3 sm:top-4 sm:right-4 p-2 bg-white/50 hover:bg-white text-slate-700 rounded-full transition-colors z-10"
+              >
+                <X size={20} className="sm:w-6 sm:h-6" />
+              </button>
+              <div className="w-full h-full max-w-[200px] sm:max-w-[250px]">
+                <Staff clef={selectedNote.clef} noteY={selectedNote.y} ledger={selectedNote.ledger} noteColor={selectedNote.color} />
+              </div>
+            </div>
+
+            {/* Body Modal */}
+            <div className="p-5 sm:p-8 text-center flex-1 flex flex-col overflow-y-auto">
+              <h2 className={`text-3xl sm:text-4xl font-black ${selectedNote.color} mb-1 sm:mb-2`}>{selectedNote.name}</h2>
+              <div className="inline-flex items-center justify-center gap-1.5 sm:gap-2 bg-slate-100 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full text-slate-600 font-bold mb-4 sm:mb-6 mx-auto text-sm sm:text-base">
+                <span className="font-serif text-lg sm:text-xl">{selectedNote.clef === 'sol' ? '𝄞' : '𝄢'}</span>
+                Clave de {selectedNote.clef === 'sol' ? 'Sol' : 'Fá'}
+              </div>
+              
+              <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-4 sm:p-5 mb-6 sm:mb-8 text-left flex gap-3 sm:gap-4 items-start">
+                <div className="bg-blue-200 p-1.5 sm:p-2 rounded-full shrink-0 mt-0.5">
+                  <Info className="text-blue-600 w-5 h-5 sm:w-6 sm:h-6" />
+                </div>
+                <p className="text-slate-700 text-sm sm:text-lg font-medium leading-relaxed">
+                  {selectedNote.description}
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-auto">
+                <button 
+                  onClick={() => playTone(selectedNote.freq)}
+                  className="w-full sm:flex-1 bg-green-400 hover:bg-green-500 text-white py-3 sm:py-4 rounded-xl sm:rounded-2xl font-black text-lg sm:text-xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-green-200"
+                >
+                  <Play fill="currentColor" className="w-5 h-5 sm:w-6 sm:h-6" /> Ouvir o Som
+                </button>
+                <button 
+                  onClick={(e) => { addToCart(selectedNote, e); setSelectedNote(null); }}
+                  className="w-full sm:flex-1 bg-indigo-500 hover:bg-indigo-600 text-white py-3 sm:py-4 rounded-xl sm:rounded-2xl font-black text-lg sm:text-xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-indigo-200"
+                >
+                  <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" /> Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- DRAWER DA MOCHILA (CARRINHO) --- */}
+      {showCart && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowCart(false)}>
+          <div 
+            className="w-[85vw] sm:w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-[slideIn_0.3s_ease-out]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-4 sm:p-6 border-b border-slate-100 flex items-center justify-between bg-indigo-500 text-white">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <ShoppingCart className="w-6 h-6 sm:w-7 sm:h-7" />
+                <h2 className="text-xl sm:text-2xl font-bold">Sua Mochila</h2>
+              </div>
+              <button onClick={() => setShowCart(false)} className="p-2 hover:bg-indigo-600 rounded-full transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50">
+              {cart.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3 sm:gap-4">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 bg-slate-100 rounded-full flex items-center justify-center">
+                    <Music className="text-slate-300 w-8 h-8 sm:w-10 sm:h-10" />
+                  </div>
+                  <p className="text-lg sm:text-xl font-bold">A mochila está vazia!</p>
+                  <p className="text-center px-4 sm:px-8 text-sm sm:text-base">Vá explorar e pegue algumas notas musicais para guardar aqui.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 sm:gap-4">
+                  {cart.map(item => (
+                    <div key={item.id} className="bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 sm:gap-4 group">
+                      <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-xl ${item.bg} flex items-center justify-center shrink-0`}>
+                        <svg width="100%" height="100%" viewBox="0 0 40 40" className="w-8 h-8 sm:w-10 sm:h-10">
+                           <ellipse cx="20" cy="20" rx="12" ry="9" transform="rotate(-15 20 20)" className={item.color} fill="currentColor" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className={`font-bold text-base sm:text-lg truncate ${item.color}`}>{item.name}</h4>
+                        <p className="text-slate-500 text-xs sm:text-sm font-medium truncate">Clave de {item.clef === 'sol' ? 'Sol' : 'Fá'}</p>
+                      </div>
+                      <button 
+                        onClick={() => removeFromCart(item.id)}
+                        className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-colors"
+                      >
+                        <X size={18} className="sm:w-5 sm:h-5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {cart.length > 0 && (
+              <div className="p-4 sm:p-6 border-t border-slate-100 bg-white">
+                <button 
+                  className="w-full bg-green-400 hover:bg-green-500 text-white py-3 sm:py-4 rounded-xl sm:rounded-2xl font-black text-lg sm:text-xl flex items-center justify-center gap-2 shadow-lg shadow-green-200 transition-transform active:scale-95"
+                  onClick={() => alert('Parabéns! Você guardou todas as notas e está pronto para compor uma música! 🎵')}
+                >
+                  <Star fill="currentColor" className="w-5 h-5 sm:w-6 sm:h-6" /> Completar Missão
+                </button>
+              </div>
+            )}
+          </div>
+          <style>{`
+            @keyframes slideIn {
+              from { transform: translateX(100%); }
+              to { transform: translateX(0); }
+            }
+          `}</style>
+        </div>
+      )}
+
+    </div>
+  );
+}
